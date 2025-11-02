@@ -3,7 +3,7 @@ import { useDebounce } from "react-use";
 import Search from "./components/Search";
 import Spinner from "./components/Spinner";
 import MovieCard from "./components/MovieCard";
-import { getTrendingMovies, updateSearchCount } from "./appwrite";
+import { getTrendingMovies } from "./appwrite";
 
 const API_BASE_URL = "https://api.themoviedb.org/3";
 const API_KEY = import.meta.env.VITE_TMDB_API_KEY;
@@ -29,7 +29,6 @@ function App() {
 
   const fetchMovies = async (query = "", pageNumber = 1) => {
     setIsLoading(true);
-    setErrorMessage("");
 
     try {
       const endpoint = query
@@ -39,59 +38,57 @@ function App() {
         : `${API_BASE_URL}/discover/movie?include_adult=false&include_video=false&language=en-US&page=${pageNumber}&sort_by=popularity.desc`;
 
       const response = await fetch(endpoint, API_OPTIONS);
-
-      if (!response.ok) throw new Error("Error loading..!!");
+      if (!response.ok) throw new Error("Error loading movies");
 
       const data = await response.json();
 
-      if (pageNumber === 1) {
-        setMovieList(data.results);
+      // ✅ append only on load more
+      if (pageNumber > 1) {
+        setMovieList((prev) => [...prev, ...data.results]);
       } else {
-        setMovieList((prev) => [...prev, ...data.results]); // ✅ append movies
+        setMovieList(data.results);
       }
     } catch (error) {
-      console.error(error);
-      setErrorMessage("Error fetching movies. Please try again later.");
+      setErrorMessage("Unable to load movies. Try again later.");
     } finally {
       setIsLoading(false);
     }
   };
 
-  const loadTrendingMovies = async () => {
-    try {
-      const movies = await getTrendingMovies();
-      console.log(movies);
-      setTrendingMovies(movies);
-    } catch (error) {
-      console.log(error);
-    }
-  };
-
+  // ✅ Search effect
   useEffect(() => {
     setPage(1);
     fetchMovies(debouncedSearchTerm, 1);
   }, [debouncedSearchTerm]);
 
+  // ✅ Infinite scroll listener
   useEffect(() => {
-    const handleScroll = () => {
-      const bottom =
+    const onScroll = () => {
+      if (
         window.innerHeight + window.scrollY >=
-        document.documentElement.scrollHeight - 200;
-
-      if (bottom && !isLoading) {
-        setPage((prev) => prev + 1);
+        document.documentElement.scrollHeight - 200
+      ) {
+        !isLoading && setPage((prev) => prev + 1);
       }
     };
 
-    window.addEventListener("scroll", handleScroll);
-    return () => window.removeEventListener("scroll", handleScroll);
+    window.addEventListener("scroll", onScroll);
+    return () => window.removeEventListener("scroll", onScroll);
   }, [isLoading]);
 
+  // ✅ Trigger API only on page > 1
   useEffect(() => {
-    if (page > 1) {
-      fetchMovies(debouncedSearchTerm, page);
-    }
+    if (page > 1) fetchMovies(debouncedSearchTerm, page);
   }, [page]);
+
+  const loadTrendingMovies = async () => {
+    try {
+      const movies = await getTrendingMovies();
+      setTrendingMovies(movies);
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   useEffect(() => {
     loadTrendingMovies();
@@ -108,37 +105,38 @@ function App() {
             Without the Hassel..
           </h1>
         </header>
+
         {trendingMovies.length > 0 && (
           <section className="trending">
             <h2>Trending Movies</h2>
-
             <ul>
-              {trendingMovies.map((movie, index) => (
+              {trendingMovies.map((movie, i) => (
                 <li key={movie.$id}>
-                  <p>{index + 1}</p>
+                  <p>{i + 1}</p>
                   <img src={movie.poster_url} alt={movie.title} />
                 </li>
               ))}
             </ul>
           </section>
         )}
+
         <Search searchTerm={searchTerm} setSearchTerm={setSearchTerm} />
+
         <section className="all-movies">
           <h2 className="mt-[40px]">
-            {searchTerm ? "Search Results for : " + searchTerm : "Popular"}
+            {searchTerm ? `Search Results for: ${searchTerm}` : "Popular"}
           </h2>
-          {isLoading ? (
-            <Spinner />
-          ) : errorMessage ? (
-            <p className="text-red-500">{errorMessage}</p>
-          ) : (
-            <ul>
-              {movieList.map((movie) => (
-                <MovieCard key={movie.id} movie={movie} />
-              ))}
-            </ul>
-          )}
-          {}
+
+          {errorMessage && <p className="text-red-500">{errorMessage}</p>}
+
+          <ul>
+            {movieList.map((movie) => (
+              <MovieCard key={movie.id} movie={movie} />
+            ))}
+          </ul>
+
+          {/* ✅ Keep spinner only at bottom on load more */}
+          {isLoading && <Spinner />}
         </section>
       </div>
     </main>
